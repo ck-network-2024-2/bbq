@@ -100,7 +100,7 @@ class Program
 			CreateStar("Scene_Gameplay_2");
 		}
 
-		// TODO : NPC 엔티티 생성
+		CreateNPC("Scene_Gameplay_1", 0f, 4f);
 
 		Console.WriteLine("기본 씬 'Scene_Gameplay_1'과 'Scene_Gameplay_2'가 초기화되었습니다.");
 	}
@@ -251,6 +251,23 @@ class Program
 		scenes[sceneName].Stars.TryAdd(starId, star);
 	}
 
+	// 새로운 NPC를 생성하고 관리하는 메서드
+	private static void CreateNPC(string sceneName, float x, float y)
+	{
+		// NPC ID 생성
+		uint npcId = GenerateUniqueId();
+
+		// NPC 생성
+		NpcData npc = new NpcData
+		{
+			NetworkId = npcId,
+			X = x,
+			Y = y,
+			SceneName = sceneName
+		};
+		scenes[sceneName].Npcs.TryAdd(npcId, npc);
+	}
+
 	// 고유한 식별자를 생성하는 메서드
 	private static uint GenerateUniqueId()
 	{
@@ -323,7 +340,38 @@ class Program
 				}
 			}
 
-			// 추가적인 월드 시뮬레이션 로직 (NPC 동작 등)을 여기에 추가할 수 있습니다.
+			// 플레이어와 별의 충돌 감지 및 처리
+			foreach (var scene in scenes.Values)
+			{
+				var starsToRemove = new List<uint>();
+
+				foreach (var player in scene.Players.Values)
+				{
+					foreach (var star in scene.Stars.Values)
+					{
+						if (IsCollision(player, star))
+						{
+							// 별 제거 및 새로운 별 생성
+							star.X = new Random().NextSingle() * (2f * SceneWidth) - SceneWidth;
+							star.Y = new Random().NextSingle() * (2f * SceneHeight) - SceneHeight;
+
+							// 플레이어 점수 증가
+							player.Score += 1;
+						}
+					}
+				}
+			}
+
+			// NPC가 -1 ~ 1 만큼 좌우로 이동
+			foreach (var scene in scenes.Values)
+			{
+				foreach (var npc in scene.Npcs.Values)
+				{
+					npc.X += new Random().Next(-1, 2);
+					if (npc.X > SceneWidth) npc.X = SceneWidth;
+					if (npc.X < -SceneWidth) npc.X = -SceneWidth;
+				}
+			}
 
 			// 목표 프레임 시간 유지
 			var frameEnd = DateTime.UtcNow;
@@ -334,6 +382,15 @@ class Program
 				await Task.Delay(delay);
 			}
 		}
+	}
+
+	// 플레이어와 별의 충돌을 감지하는 메서드
+	private static bool IsCollision(PlayerData player, StarData star)
+	{
+		const float collisionDistance = 0.5f; // 충돌 거리 임계값
+		float dx = player.X - star.X;
+		float dy = player.Y - star.Y;
+		return (dx * dx + dy * dy) <= (collisionDistance * collisionDistance);
 	}
 
 	private static async Task SendWorldStateAsync(TcpClient client, byte[] worldStateBytes)
