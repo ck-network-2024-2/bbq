@@ -185,19 +185,16 @@ class Program
 			switch (key.ToUpper())
 			{
 				case "UP":
-					player.Y += 0.1f;
+					player.Y += 0.05f;
 					break;
 				case "DOWN":
-					player.Y -= 0.1f;
+					player.Y -= 0.05f;
 					break;
 				case "LEFT":
-					player.X -= 0.1f;
+					player.X -= 0.05f;
 					break;
 				case "RIGHT":
-					player.X += 0.1f;
-					break;
-				case "SPACE":
-					FireBullet(clientId, playerScene);
+					player.X += 0.05f;
 					break;
 				default:
 					Console.WriteLine($"알 수 없는 입력: {key}");
@@ -222,31 +219,29 @@ class Program
 		return false;
 	}
 
-	// 새로운 총알을 생성하고 관리하는 메서드
-	private static void FireBullet(uint ownerId, SceneData scene)
-	{
-		// 총알 ID 생성
-		uint bulletId = GenerateUniqueId();
+	// 새로운 별을 생성하고 관리하는 메서드
+	//private static void FireBullet(uint ownerId, SceneData scene)
+	//{
+	//	// 총알 ID 생성
+	//	uint bulletId = GenerateUniqueId();
 
-		if (!scene.Players.TryGetValue(ownerId, out PlayerData player))
-		{
-			Console.WriteLine($"플레이어 #{ownerId}를 찾을 수 없습니다.");
-			return;
-		}
+	//	if (!scene.Players.TryGetValue(ownerId, out PlayerData player))
+	//	{
+	//		Console.WriteLine($"플레이어 #{ownerId}를 찾을 수 없습니다.");
+	//		return;
+	//	}
 
-		// 총알 생성
-		BulletData bullet = new BulletData
-		{
-			NetworkId = bulletId,
-			OwnerId = ownerId,
-			X = player.X,
-			Y = player.Y,
-			SceneName = player.SceneName
-		};
-		scene.Bullets.TryAdd(bulletId, bullet);
-
-		Console.WriteLine($"플레이어 #{ownerId}가 총알 #{bulletId}을 발사했습니다.");
-	}
+	//	// 총알 생성
+	//	BulletData bullet = new BulletData
+	//	{
+	//		NetworkId = bulletId,
+	//		OwnerId = ownerId,
+	//		X = player.X,
+	//		Y = player.Y,
+	//		SceneName = player.SceneName
+	//	};
+	//	scene.Bullets.TryAdd(bulletId, bullet);
+	//}
 
 	// 고유한 식별자를 생성하는 메서드
 	private static uint GenerateUniqueId()
@@ -293,6 +288,35 @@ class Program
 				RemoveClient(clientId);
 			}
 
+			// 플레이어가 맵 밖에 나가면 씬 전환
+			foreach (var scene in scenes.Values)
+			{
+				var playersToMove = new List<PlayerData>();
+
+				foreach (var player in scene.Players.Values)
+				{
+					if (player.X > 10f || player.X < -10f || player.Y > 10f || player.Y < -10f)
+					{
+						playersToMove.Add(player);
+					}
+				}
+
+				foreach (var player in playersToMove)
+				{
+					// 현재 씬에서 플레이어 제거
+					scene.Players.TryRemove(player.NetworkId, out _);
+
+					// 새로운 씬으로 플레이어 이동
+					player.X = 0f;
+					player.Y = 0f;
+					string newSceneName = player.SceneName == "Scene_Gameplay_1" ? "Scene_Gameplay_2" : "Scene_Gameplay_1";
+					player.SceneName = newSceneName;
+					scenes[newSceneName].Players.TryAdd(player.NetworkId, player);
+				}
+			}
+
+			// 추가적인 월드 시뮬레이션 로직 (NPC 동작 등)을 여기에 추가할 수 있습니다.
+
 			// 목표 프레임 시간 유지
 			var frameEnd = DateTime.UtcNow;
 			int elapsed = (int)(frameEnd - frameStart).TotalMilliseconds;
@@ -301,8 +325,6 @@ class Program
 			{
 				await Task.Delay(delay);
 			}
-
-			// 추가적인 월드 시뮬레이션 로직 (NPC 동작 등)을 여기에 추가할 수 있습니다.
 		}
 	}
 
