@@ -20,6 +20,10 @@ class Program
 	// 씬 할당을 위한 카운터 (라운드 로빈 방식)
 	private static int sceneAssignCounter = 0;
 
+	// 씬 크기
+	private const float SceneWidth = 8f;
+	private const float SceneHeight = 7f;
+
 	static async Task Main(string[] args)
 	{
 		// 초기 씬 생성
@@ -57,10 +61,11 @@ class Program
 						NetworkId = clientId,
 						X = 0,
 						Y = 0,
-						SceneName = assignedSceneName
+						SceneName = assignedSceneName,
+						Name = $"Player_{clientId}"
 					};
 					scene.Players.TryAdd(clientId, player);
-					Console.WriteLine($"클라이언트 #{clientId}가 '{assignedSceneName}'에 할당되었습니다.");
+					Console.WriteLine($"{player.Name}이/가 '{assignedSceneName}'에 할당되었습니다.");
 
 					// 클라이언트 처리 비동기 시작
 					_ = HandleClientAsync(client, clientId);
@@ -84,8 +89,19 @@ class Program
 	// 초기 씬을 생성하는 메서드
 	private static void InitializeScenes()
 	{
+		// 씬 초기화
 		scenes.TryAdd("Scene_Gameplay_1", new SceneData());
 		scenes.TryAdd("Scene_Gameplay_2", new SceneData());
+
+		// 별 엔티티 생성
+		for (int i = 0; i < 10; i++)
+		{
+			CreateStar("Scene_Gameplay_1");
+			CreateStar("Scene_Gameplay_2");
+		}
+
+		// TODO : NPC 엔티티 생성
+
 		Console.WriteLine("기본 씬 'Scene_Gameplay_1'과 'Scene_Gameplay_2'가 초기화되었습니다.");
 	}
 
@@ -101,7 +117,7 @@ class Program
 	// 연결된 클라이언트와의 통신을 처리하는 메서드
 	private static async Task HandleClientAsync(TcpClient client, uint clientId)
 	{
-		// 타임아웃 설정 (10초)
+		// 타임아웃 설정
 		client.ReceiveTimeout = 10000; // 10초
 		client.SendTimeout = 10000; // 10초
 
@@ -113,14 +129,13 @@ class Program
 			byte[] buffer = new byte[1024];
 			int byteCount;
 
-			// 클라이언트에게 환영 메시지와 클라이언트 ID 전송
-			string welcomeMessage = $"MSG:클라이언트 #{clientId}에 연결되었습니다.\n";
+			// 클라이언트 ID 전송
 			string clientIdMessage = $"ID:{clientId}\n";
-			byte[] welcomeBytes = Encoding.UTF8.GetBytes(welcomeMessage + clientIdMessage);
+			byte[] clientIdBytes = Encoding.UTF8.GetBytes(clientIdMessage);
 
 			// 메시지를 gzip으로 압축
-			byte[] compressedWelcomeBytes = Compress(welcomeBytes);
-			await stream.WriteAsync(compressedWelcomeBytes, 0, compressedWelcomeBytes.Length);
+			byte[] compressedClientIdBytes = Compress(clientIdBytes);
+			await stream.WriteAsync(compressedClientIdBytes, 0, compressedClientIdBytes.Length);
 
 			// 클라이언트로부터의 메시지 수신 루프
 			while ((byteCount = await stream.ReadAsync(buffer, 0, buffer.Length)) != 0)
@@ -134,7 +149,7 @@ class Program
 				{
 					string singleMessage = completeData.Substring(0, delimiterIndex).Trim();
 					messageBuilder.Remove(0, delimiterIndex + 1);
-					Console.WriteLine($"클라이언트 #{clientId}로부터 받은 입력: {singleMessage}");
+					Console.WriteLine($"클라이언트 #{clientId}으/로부터 받은 입력: {singleMessage}");
 
 					// 클라이언트로부터 받은 입력 처리
 					ProcessInput(clientId, singleMessage);
@@ -185,16 +200,16 @@ class Program
 			switch (key.ToUpper())
 			{
 				case "UP":
-					player.Y += 0.05f;
+					player.Y += player.Speed;
 					break;
 				case "DOWN":
-					player.Y -= 0.05f;
+					player.Y -= player.Speed;
 					break;
 				case "LEFT":
-					player.X -= 0.05f;
+					player.X -= player.Speed;
 					break;
 				case "RIGHT":
-					player.X += 0.05f;
+					player.X += player.Speed;
 					break;
 				default:
 					Console.WriteLine($"알 수 없는 입력: {key}");
@@ -220,28 +235,21 @@ class Program
 	}
 
 	// 새로운 별을 생성하고 관리하는 메서드
-	//private static void FireBullet(uint ownerId, SceneData scene)
-	//{
-	//	// 총알 ID 생성
-	//	uint bulletId = GenerateUniqueId();
+	private static void CreateStar(string sceneName)
+	{
+		// 별 ID 생성
+		uint starId = GenerateUniqueId();
 
-	//	if (!scene.Players.TryGetValue(ownerId, out PlayerData player))
-	//	{
-	//		Console.WriteLine($"플레이어 #{ownerId}를 찾을 수 없습니다.");
-	//		return;
-	//	}
-
-	//	// 총알 생성
-	//	BulletData bullet = new BulletData
-	//	{
-	//		NetworkId = bulletId,
-	//		OwnerId = ownerId,
-	//		X = player.X,
-	//		Y = player.Y,
-	//		SceneName = player.SceneName
-	//	};
-	//	scene.Bullets.TryAdd(bulletId, bullet);
-	//}
+		// 별 생성
+		StarData star = new StarData
+		{
+			NetworkId = starId,
+			X = new Random().NextSingle() * (2f * SceneWidth) - SceneWidth,
+			Y = new Random().NextSingle() * (2f * SceneHeight) - SceneHeight,
+			SceneName = sceneName
+		};
+		scenes[sceneName].Stars.TryAdd(starId, star);
+	}
 
 	// 고유한 식별자를 생성하는 메서드
 	private static uint GenerateUniqueId()
@@ -295,7 +303,7 @@ class Program
 
 				foreach (var player in scene.Players.Values)
 				{
-					if (player.X > 10f || player.X < -10f || player.Y > 10f || player.Y < -10f)
+					if (player.X > SceneWidth || player.X < -SceneWidth || player.Y > SceneHeight || player.Y < -SceneHeight)
 					{
 						playersToMove.Add(player);
 					}
@@ -366,26 +374,25 @@ class Program
 	// 플레이어 엔티티 데이터 클래스
 	public class PlayerData : BaseNetworkEntity
 	{
-		// 추가적인 플레이어 속성이나 메서드가 필요하다면 여기에 정의
+		public string Name { get; set; }
+		public int Score { get; set; }
+		public float Speed { get; set; } = 0.05f;
 	}
 
-	// 총알 엔티티 데이터 클래스
-	public class BulletData : BaseNetworkEntity
-	{
-		public uint OwnerId { get; set; } // 총알을 발사한 플레이어 ID
-	}
+	// 별 엔티티 데이터 클래스
+	public class StarData : BaseNetworkEntity { }
 
 	// NPC 엔티티 데이터 클래스
 	public class NpcData : BaseNetworkEntity
 	{
-		// 추가적인 NPC 속성이나 메서드가 필요하다면 여기에 정의
+		public float Speed { get; set; } = 0.1f;
 	}
 
 	// 씬별 엔티티 데이터를 관리하는 클래스
 	public class SceneData
 	{
 		public ConcurrentDictionary<uint, PlayerData> Players { get; set; } = new ConcurrentDictionary<uint, PlayerData>();
-		public ConcurrentDictionary<uint, BulletData> Bullets { get; set; } = new ConcurrentDictionary<uint, BulletData>();
+		public ConcurrentDictionary<uint, StarData> Stars { get; set; } = new ConcurrentDictionary<uint, StarData>();
 		public ConcurrentDictionary<uint, NpcData> Npcs { get; set; } = new ConcurrentDictionary<uint, NpcData>();
 	}
 
